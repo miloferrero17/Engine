@@ -23,6 +23,7 @@ from app.Model.questions import Questions
 from app.Model.events import Events
 from app.Utils.table_cleaner import TableCleaner
 
+
 import app.services.brain as brain
 import app.services.decisions as decs
 import app.services.embedding as vector
