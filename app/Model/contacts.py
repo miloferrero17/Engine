@@ -105,7 +105,25 @@ class Contacts(BaseModel):
         except Exception as e:
             raise DatabaseError(f"Error en delete_all: {e}")
 
+    def get_event_id_by_phone(self, phone: str) -> Optional[int]:
+        """
+        Retorna el event_id asociado a un número de teléfono.
+        """
+        try:
+            result = super().get("phone", phone)
+            if not result:
+                return None
+            registro = result[0]
+            return registro["event_id"] if isinstance(registro, dict) else registro.event_id
+        except Exception as e:
+            raise DatabaseError(f"Error en get_event_id_by_phone: {e}")
+
 '''
+ctt = Contacts()
+event_id = ctt.get_event_id_by_phone("5491133585362")
+print(event_id)
+
+
 
 # contacts.py
 

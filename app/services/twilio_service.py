@@ -4,6 +4,9 @@ from datetime import datetime
 from dotenv import load_dotenv
 import requests
 from requests.auth import HTTPBasicAuth
+import json
+
+
 
 # Cargar variables de entorno
 load_dotenv()
@@ -14,7 +17,7 @@ auth_token = os.getenv('TWILIO_AUTH_TOKEN')
 twilio_whatsapp_number = os.getenv('TWILIO_WHATSAPP_NUMBER')
 
 # Validación de configuración
-if not account_sid or not auth_token or not twilio_whatsapp_number:
+if not account_sid or  not auth_token or not twilio_whatsapp_number:
     raise ValueError(
         "⚠️ Faltan variables de entorno: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN o TWILIO_WHATSAPP_NUMBER."
     )
@@ -68,6 +71,7 @@ def download_file(sender, media_url, media_type, folder):
     except Exception as e:
         print(f"❌ Error al descargar archivo desde {media_url}: {e}")
         return None
+
 
 '''
 import os

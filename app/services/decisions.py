@@ -93,6 +93,37 @@ def next_node_fofoca_sin_logica(numero_limpio, body, conversation_str, ctt, tx, 
 
     return result
 
+def ejecutar_codigo_guardado(codigo_crudo: str, variables: dict):
+    try:
+        if "\\n" in codigo_crudo:
+            codigo_crudo = codigo_crudo.replace("\\n", "\n")
+        
+        contexto = {
+            "__builtins__": {
+                "print": print,
+                "len": len,
+                "range": range,
+                "__import__": __import__
+            },
+            "next_node_fofoca_sin_logica": next_node_fofoca_sin_logica  # ✅ Coma agregada
+        }
+        
+        contexto.update(variables)
+        exec(codigo_crudo, contexto)
+
+        if "result" not in contexto:
+            contexto["result"] = "[Sin resultado definido]"
+        if "nodo_destino" not in contexto:
+            contexto["nodo_destino"] = 0
+        return contexto
+
+    except Exception as e:
+        print("\u274c Error ejecutando código:", e)
+        variables["result"] = "[Error en el motor de ejecución]"
+        variables["nodo_destino"] = 0
+        return variables
+    
+
 
 '''
 import json
