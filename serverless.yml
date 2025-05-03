@@ -32,9 +32,16 @@ custom:
 functions:
   app:
     handler: wsgi_handler.handler
+    # este bloque mapea TODO tu Flask:
     events:
-      - http: ANY /
-      - http: 'ANY {proxy+}'
+      - http:
+          path: /
+          method: any
+          cors: true
+      - http:
+          path: /{proxy+}
+          method: any
+          cors: true
 
 # Permite que Serverless instale dependencias automáticamente
 package:

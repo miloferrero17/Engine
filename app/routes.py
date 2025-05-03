@@ -1,9 +1,13 @@
 # Módulos Built-in
 import flask
+from flask import Blueprint, request, current_app, render_template
 import os
 import requests
 import time
 from dotenv import load_dotenv
+import json
+from datetime import datetime, timedelta
+
 
 # Módulos de terceros
 from requests.auth import HTTPBasicAuth
@@ -16,6 +20,9 @@ import openai
 # Módulos propios
 from app.Model.users import Users
 import app.message_p as engine
+from app.Model.transactions import Transactions
+from app.Model.contacts import Contacts
+
 
 routes = flask.Blueprint("routes", __name__)
 
@@ -23,6 +30,10 @@ routes = flask.Blueprint("routes", __name__)
 load_dotenv()
 TMP_DIR = "/tmp"
 
+
+# —————————————————————————————————————————————————————————————
+# 1) Rutas de Whatsapp
+# —————————————————————————————————————————————————————————————
 @routes.route("/", methods=["GET", "POST"])
 def whatsapp_reply():
     if flask.request.method == 'GET':
@@ -56,7 +67,7 @@ def whatsapp_reply():
                 print("🎙️ Es audio")
                 twilio.send_whatsapp_message("Te estoy escuchando ...", sender_number)
                 transcription = wisper.transcribir_audio_cloud(reply_path)
-                print(f"📝 Transcripción: {transcription}")
+                #print(f"📝 Transcripción: {transcription}")
                 message_body = transcription
                 tiene_adjunto = 1
 
@@ -64,7 +75,7 @@ def whatsapp_reply():
                 print("🖼️ Es imagen")
                 twilio.send_whatsapp_message("Dejame ver tu foto ...", sender_number)
                 description = vision.describe_image(reply_path)
-                print(f"🧠 Descripción generada: {description}")
+                #print(f"🧠 Descripción generada: {description}")
                 message_body = message_body + "\n📷 " + description
                 tiene_adjunto = 1
 
@@ -72,7 +83,7 @@ def whatsapp_reply():
                 print("📄 Es PDF")
                 twilio.send_whatsapp_message("Dejame ver tu archivo ...", sender_number)
                 pdf_text = vision.extract_text_from_pdf(reply_path)
-                print(f"📄 Texto extraído del PDF:\n{pdf_text[:300]}...")  # Log parcial
+                #print(f"📄 Texto extraído del PDF:\n{pdf_text[:300]}...")  # Log parcial
                 #twilio.send_whatsapp_message("Dejame ver ... ", sender_number)
                 message_body = message_body + "\n📄 " + pdf_text
                 tiene_adjunto = 1
@@ -123,688 +134,221 @@ def download_file(media_url: str, file_path: str) -> str:
         raise
 
 
-'''
-# Modulos Build-in
-import flask
-import os
-import requests
-import time
-from dotenv import load_dotenv
+# —————————————————————————————————————————————————————————————
+# 2) Rutas web de consulta de DNI y feedback
+# —————————————————————————————————————————————————————————————
+# app/routes.py
 
-# Modulos de 3eros
-from requests.auth import HTTPBasicAuth
-import app.services.twilio_service as twilio
-import app.services.wisper as wisper
-import app.services.vision as vision
-import openai
+def _consulta():
+    # 1) Logging inicial
+    current_app.logger.info(
+        f"[CONSULTA] method={request.method} args={request.args.to_dict()} form={request.form.to_dict()}"
+    )
 
-# Modulos propios
-from app.Model.users import Users
-import app.message_p as engine
+    # 2) Feedback POST
+    if request.method == "POST" and request.form.get("rating") is not None:
+        tel      = request.form.get("tel", "").strip()
+        txid     = request.form.get("txid")
+        try:
+            rating     = int(request.form.get("rating", 0))
+            comentario = request.form.get("comment", "").strip()
+        except ValueError:
+            flask.flash("Puntuación inválida", "error")
+            return flask.redirect(flask.url_for("routes.index", tel=tel, txid=txid))
 
-routes = flask.Blueprint("routes", __name__)
-
-
-# Cargar variables de entorno
-load_dotenv()
-TMP_DIR = "/tmp"
-# Blueprint de Flask
-#routes = flask.Blueprint("routes", __name__)
-@routes.route("/", methods=["GET", "POST"])
-
-def whatsapp_reply():
-    if flask.request.method == 'GET':
-        return "✅ Server is running and accessible via GET request."
-
-    #print("Versión de openai:", openai.__version__)
-    sender_number = flask.request.form.get('From')
-    message_body = flask.request.form.get("Body", "").strip()
-    num_media = int(flask.request.form.get("NumMedia", 0))
-    #print(num_media)
-    media_url = flask.request.form.get("MediaUrl0")
-    #print(media_url)
-    media_type = flask.request.form.get("MediaContentType0")
-    #print(media_type)
-    
-    description = ""
-    transcription = ""
-    pdf_text = ""
-
-    if num_media > 0:
-        # Sanitizamos número y armamos ruta
-        clean_sender = sender_number.replace(":", "_").replace("+", "")
-        folder = os.path.join(TMP_DIR, f"{clean_sender}_media")
-        os.makedirs(folder, exist_ok=True)
-
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        extension = media_type.split("/")[-1]
-        nombre_del_archivo = f"{clean_sender}_{timestamp}.{extension}"
-        file_path = os.path.join(folder, nombre_del_archivo)
-
-        #print(f"📁 Ruta del archivo: {file_path}")
-
-        if media_type.startswith("audio"):
-            print("🎙️ Es audio")
-
-            try:
-                reply_path = download_file(media_url, file_path)
-                transcription = wisper.transcribir_audio_cloud(reply_path)
-                print(f"📝 Transcripción: {transcription}")
-
-                #twilio.send_whatsapp_message(transcription, sender_number, media_url=None)
-
-            except Exception as e:
-                print("❌ Error procesando audio:", str(e))
-                return "Error en transcripción", 500
-
-        elif media_type.startswith("image"):
-            print("🖼️ Es imagen")
-
-            try:
-                reply_path = download_file(media_url, file_path)
-                description = vision.describe_image(reply_path)
-                #twilio.send_whatsapp_message(description, sender_number, media_url=None)
-
-            except Exception as e:
-                print("❌ Error procesando imagen:", str(e))
-                return "Error en descripción de imagen", 500
-
-        elif media_type == "application/pdf":
-            print("📄 Es PDF")
-
-            try:
-                reply_path = download_file(media_url, file_path)
-                pdf_text = vision.extract_text_from_pdf(reply_path)
-                #twilio.send_whatsapp_message(pdf_text, sender_number, media_url=None)
-
-            except Exception as e:
-                print("❌ Error procesando PDF:", str(e))
-                return "Error en lectura de PDF", 500
-
-        else:
-            print("⚠️ Tipo de archivo no soportado:", media_type)
-            #twilio.send_whatsapp_message( "⚠️ Tipo de archivo no soportado. Envía un mensaje de voz, imagen o PDF.", sender_number)
-        
-        response = MessagingResponse()
-
-        if transcription:
-            message_body = transcription
-        elif description:
-            message_body = message_body + "\n📷 " + description
-        elif pdf_text:
-            message_body = message_body + "\n📄 " + pdf_text
-
-    print(message_body)
-    return engine.handle_incoming_message(message_body, sender_number, "Ruta del archivo adjunto")
-        
-
-def download_file(media_url: str, file_path: str) -> str:
-    """
-    Descarga un archivo multimedia desde Twilio con autenticación.
-    """
-    try:
-        account_sid = os.getenv("TWILIO_ACCOUNT_SID")
-        auth_token = os.getenv("TWILIO_AUTH_TOKEN")
-
-        if not account_sid or not auth_token:
-            raise ValueError("TWILIO_ACCOUNT_SID o TWILIO_AUTH_TOKEN no están definidos")
-
-        response = requests.get(media_url, auth=HTTPBasicAuth(account_sid, auth_token), timeout=10)
-        response.raise_for_status()
-
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
-
-        with open(file_path, 'wb') as f:
-            f.write(response.content)
-
-        print(f"✅ Archivo descargado en: {file_path}")
-        return file_path
-
-    except Exception as e:
-        print(f"❌ Error al descargar archivo desde {media_url}: {e}")
-        raise
-
-
-
-# Modulos Build-in
-import flask
-import os
-import requests
-import time
-from dotenv import load_dotenv
-
-# Modulos de 3eros
-from requests.auth import HTTPBasicAuth
-from twilio.twiml.messaging_response import MessagingResponse
-
-# Modulos propios
-import app.services.twilio_service as twilio
-import app.services.wisper as wisper
-import app.services.vision as vision
-from app.Model.users import Users
-from requests.auth import HTTPBasicAuth
-
-routes = flask.Blueprint("routes", __name__)
-
-
-# Cargar variables de entorno
-load_dotenv()
-TMP_DIR = "/tmp"
-# Blueprint de Flask
-#routes = flask.Blueprint("routes", __name__)
-@routes.route("/", methods=["GET", "POST"])
-
-def whatsapp_reply():
-    if flask.request.method == 'GET':
-        return "✅ Server is running and accessible via GET request."
-
-    sender_number = flask.request.form.get('From')
-    message_body = flask.request.form.get("Body", "").strip()
-    num_media = int(flask.request.form.get("NumMedia", 0))
-
-    description = ""
-    transcription = ""
-    pdf_text = ""
-
-    if num_media > 0:
-        media_url = flask.request.form.get("MediaUrl0")
-        media_type = flask.request.form.get("MediaContentType0")
-
-        print(f"📩 Media URL: {media_url}")
-        print(f"📦 Media Type: {media_type}")
-
-        # Sanitizamos número y armamos ruta
-        clean_sender = sender_number.replace(":", "_").replace("+", "")
-        folder = os.path.join(TMP_DIR, f"{clean_sender}_media")
-        os.makedirs(folder, exist_ok=True)
-
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        extension = media_type.split("/")[-1]
-        nombre_del_archivo = f"{clean_sender}_{timestamp}.{extension}"
-        file_path = os.path.join(folder, nombre_del_archivo)
-
-        print(f"📁 Ruta del archivo: {file_path}")
-
-        if media_type.startswith("audio"):
-            print("🎙️ Es audio")
-
-            try:
-                reply_path = download_file(media_url, file_path)
-                transcription = wisper.transcribir_audio_cloud(reply_path)
-                print(f"📝 Transcripción: {transcription}")
-
-                twilio.send_whatsapp_message(transcription, sender_number, media_url=None)
-
-            except Exception as e:
-                print("❌ Error procesando audio:", str(e))
-                return "Error en transcripción", 500
-
-        elif media_type.startswith("image"):
-            print("🖼️ Es imagen")
-
-            try:
-                reply_path = download_file(media_url, file_path)
-                description = vision.describe_image(reply_path)
-                twilio.send_whatsapp_message(description, sender_number, media_url=None)
-
-            except Exception as e:
-                print("❌ Error procesando imagen:", str(e))
-                return "Error en descripción de imagen", 500
-
-        elif media_type == "application/pdf":
-            print("📄 Es PDF")
-
-            try:
-                reply_path = download_file(media_url, file_path)
-                pdf_text = vision.extract_text_from_pdf(reply_path)
-                twilio.send_whatsapp_message(pdf_text, sender_number, media_url=None)
-
-            except Exception as e:
-                print("❌ Error procesando PDF:", str(e))
-                return "Error en lectura de PDF", 500
-
-        else:
-            print("⚠️ Tipo de archivo no soportado:", media_type)
-            twilio.send_whatsapp_message(
-                "⚠️ Tipo de archivo no soportado. Envía un mensaje de voz, imagen o PDF.",
-                sender_number
+        tx = Transactions()
+        try:
+            tx.update(
+                id=int(txid),
+                puntuacion=rating,
+                comentario=comentario
             )
-
-
-
-    return "✅ Procesado correctamente"
-
-def download_file(media_url: str, file_path: str) -> str:
-    """
-    Descarga un archivo multimedia desde Twilio con autenticación.
-    """
-    try:
-        account_sid = os.getenv("TWILIO_ACCOUNT_SID")
-        auth_token = os.getenv("TWILIO_AUTH_TOKEN")
-
-        if not account_sid or not auth_token:
-            raise ValueError("TWILIO_ACCOUNT_SID o TWILIO_AUTH_TOKEN no están definidos")
-
-        response = requests.get(media_url, auth=HTTPBasicAuth(account_sid, auth_token), timeout=10)
-        response.raise_for_status()
-
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
-
-        with open(file_path, 'wb') as f:
-            f.write(response.content)
-
-        print(f"✅ Archivo descargado en: {file_path}")
-        return file_path
-
-    except Exception as e:
-        print(f"❌ Error al descargar archivo desde {media_url}: {e}")
-        raise
-
-'''
-'''
-# Modulos Build-in
-import flask
-import os
-import requests
-import time
-from dotenv import load_dotenv
-
-# Modulos de 3eros
-from requests.auth import HTTPBasicAuth
-from twilio.twiml.messaging_response import MessagingResponse
-
-# Modulos propios
-import app.services.twilio_service as twilio
-import app.services.wisper as wisper
-import app.services.vision as vision
-from app.Model.users import Users
-
-# Cargar variables de entorno
-load_dotenv()
-TMP_DIR = "/tmp"
-
-# Blueprint de Flask
-routes = flask.Blueprint("routes", __name__)
-
-from requests.auth import HTTPBasicAuth
-
-def download_file(media_url: str, file_path: str) -> str:
-    """
-    Descarga un archivo multimedia desde Twilio con autenticación.
-    """
-    try:
-        account_sid = os.getenv("TWILIO_ACCOUNT_SID")
-        auth_token = os.getenv("TWILIO_AUTH_TOKEN")
-
-        if not account_sid or not auth_token:
-            raise ValueError("TWILIO_ACCOUNT_SID o TWILIO_AUTH_TOKEN no están definidos")
-
-        response = requests.get(media_url, auth=HTTPBasicAuth(account_sid, auth_token), timeout=10)
-        response.raise_for_status()
-
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
-
-        with open(file_path, 'wb') as f:
-            f.write(response.content)
-
-        print(f"✅ Archivo descargado en: {file_path}")
-        return file_path
-
-    except Exception as e:
-        print(f"❌ Error al descargar archivo desde {media_url}: {e}")
-        raise
-
-
-@routes.route("/", methods=["GET", "POST"])
-def whatsapp_reply():
-    if flask.request.method == 'GET':
-        return "✅ Server is running and accessible via GET request."
-
-    sender_number = flask.request.form.get('From')
-    message_body = flask.request.form.get("Body", "").strip()
-    num_media = int(flask.request.form.get("NumMedia", 0))
-
-    description = ""
-    transcription = ""
-    pdf_text = ""
-
-    if num_media > 0:
-        media_url = flask.request.form.get("MediaUrl0")
-        media_type = flask.request.form.get("MediaContentType0")
-
-        print(f"📩 Media URL: {media_url}")
-        print(f"📦 Media Type: {media_type}")
-
-        # Sanitizamos número y armamos ruta
-        clean_sender = sender_number.replace(":", "_").replace("+", "")
-        folder = os.path.join(TMP_DIR, f"{clean_sender}_media")
-        os.makedirs(folder, exist_ok=True)
-
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        extension = media_type.split("/")[-1]
-        nombre_del_archivo = f"{clean_sender}_{timestamp}.{extension}"
-        file_path = os.path.join(folder, nombre_del_archivo)
-
-        print(f"📁 Ruta del archivo: {file_path}")
-
-        if media_type.startswith("audio"):
-            print("🎙️ Es audio")
-
-            try:
-                reply_path = download_file(media_url, file_path)
-                transcription = wisper.transcribir_audio_cloud(reply_path)
-                print(f"📝 Transcripción: {transcription}")
-
-                twilio.send_whatsapp_message(transcription, sender_number, media_url=None)
-
-            except Exception as e:
-                print("❌ Error procesando audio:", str(e))
-                return "Error en transcripción", 500
-
-        elif media_type.startswith("image"):
-            print("🖼️ Es imagen")
-
-            try:
-                reply_path = download_file(media_url, file_path)
-                description = vision.describe_image(reply_path)
-                twilio.send_whatsapp_message(description, sender_number, media_url=None)
-
-            except Exception as e:
-                print("❌ Error procesando imagen:", str(e))
-                return "Error en descripción de imagen", 500
-
-        elif media_type == "application/pdf":
-            print("📄 Es PDF")
-
-            try:
-                reply_path = download_file(media_url, file_path)
-                pdf_text = vision.extract_text_from_pdf(reply_path)
-                twilio.send_whatsapp_message(pdf_text, sender_number, media_url=None)
-
-            except Exception as e:
-                print("❌ Error procesando PDF:", str(e))
-                return "Error en lectura de PDF", 500
-
-        else:
-            print("⚠️ Tipo de archivo no soportado:", media_type)
-            twilio.send_whatsapp_message(
-                "⚠️ Tipo de archivo no soportado. Envía un mensaje de voz, imagen o PDF.",
-                sender_number
-            )
-
-    return "✅ Procesado correctamente"
-'''
-'''
-
-# Modulos Build-in
-import flask
-import os
-import requests
-from requests.auth import HTTPBasicAuth
-from dotenv import load_dotenv
-
-# Modulos de 3eros
-from twilio.twiml.messaging_response import MessagingResponse
-import app.services.twilio_service as twilio
-
-
-# Modulos propios
-import app.services.wisper as wisper
-import app.services.vision as vision
-#import app.message_p as engine
-from app.Model.users import Users   
-
-
-load_dotenv()  # Carga variables desde .env
-TMP_DIR = "/tmp"
-
-routes = flask.Blueprint("routes", __name__)
-
-@routes.route("/", methods=["GET", "POST"])
-def whatsapp_reply():
-
-    if flask.request.method == 'GET':
-        return "Server is running and accessible via GET request." + new 
-    
-    sender_number = flask.request.form.get('From')
-    message_body = flask.request.form.get("Body", "").strip()
-    num_media = int(flask.request.form.get("NumMedia", 0))
-
-    description = ""
-    transcription = ""
-    pdf_text = ""
-    
-    if num_media > 0:
-        # Asegurarse de que el directorio exista
-        folder = os.path.join("/tmp", f"{sender_number}_media")
-        os.makedirs(folder, exist_ok=True)
-
-        # Ruta final donde querés guardar el archivo
-        file_path = os.path.join(folder, nombre_del_archivo)
-        media_url = flask.request.form.get("MediaUrl0", None)
-        media_type = flask.request.form.get("MediaContentType0", None)
-
-        file_path = os.path.join(TMP_DIR, f"{sender_number}_media")
-
-        if media_type.startswith("audio"):
-            print("Es audio!")
-            
-            try:
-                reply = twilio.download_file(sender_number, media_url, media_type, file_path)
-            except Exception as e:
-                print("❌ Error en download_file:", str(e))
-                return "Download failed", 500
-            #reply = twilio.download_file(sender_number, media_url, media_type, file_path)
-            
-            
-            reply = list(reply)[0] if isinstance(reply, set) else reply
-            print(reply)
-
-            transcription = wisper.transcribir_audio_cloud(reply)
-            print(transcription)
-            twilio.send_whatsapp_message(transcription, sender_number, media_url = None)
-    
-    return "Ok"
-'''
-'''
-# Modulos Build-in
-import flask
-import os
-import requests
-from requests.auth import HTTPBasicAuth
-from dotenv import load_dotenv
-
-#import flask
-#from flask import Blueprint, request, jsonify
-#import os
-#from twilio.twiml.messaging_response import MessagingResponse
-#import app.services.twilio_service as twilio
-
-# Modulos de 3eros
-from twilio.twiml.messaging_response import MessagingResponse
-import app.services.twilio_service as twilio
-
-
-# Modulos propios
-import app.services.wisper as wisper
-import app.services.vision as vision
-#import app.message_p as engine
-
-load_dotenv()  # Carga variables desde .env
-
-routes = flask.Blueprint("routes", __name__)
-
-@routes.route("/", methods=["GET", "POST"])
-def whatsapp_reply():
-    if flask.request.method == 'GET':
-        return "Server is running and accessible via GET request." 
-    
-    sender_number = flask.request.form.get('From')
-    #print(sender_number)
-    message_body = flask.request.form.get("Body", "").strip()
-    num_media = int(flask.request.form.get("NumMedia", 0))
-    #print(num_media)
-
-    description = ""
-    transcription = ""
-    pdf_text = ""
-    
-    
-    twilio.send_whatsapp_message("Dale amargo", sender_number, media_url = None)
-    return "Ok"
-
-# Modulos Build-in
-import flask
-import os
-import requests
-from requests.auth import HTTPBasicAuth
-from dotenv import load_dotenv
-
-#import flask
-#from flask import Blueprint, request, jsonify
-#import os
-#from twilio.twiml.messaging_response import MessagingResponse
-#import app.services.twilio_service as twilio
-
-# Modulos de 3eros
-from twilio.twiml.messaging_response import MessagingResponse
-import app.services.twilio_service as twilio
-
-
-# Modulos propios
-#import app.services.wisper as wisper
-#import app.services.vision as vision
-#import app.message_p as engine
-
-load_dotenv()  # Carga variables desde .env
-
-routes = flask.Blueprint("routes", __name__)
-
-@routes.route("/", methods=["GET", "POST"])
-def whatsapp_reply():
-    if flask.request.method == 'GET':
-        return "Server is running and accessible via GET request." 
-    
-    sender_number = flask.request.form.get('From')
-    #print(sender_number)
-    message_body = flask.request.form.get("Body", "").strip()
-    num_media = int(flask.request.form.get("NumMedia", 0))
-    #print(num_media)
-
-    description = ""
-    transcription = ""
-    pdf_text = ""
-    
-    
-    twilio.send_whatsapp_message("Dale amargo", sender_number, media_url = None)
-    return "Ok"
-'''
-'''
-from flask import Blueprint, request, jsonify
-import os
-from dotenv import load_dotenv
-
-load_dotenv()  # Carga variables desde .env
-
-routes = Blueprint("routes", __name__)
-
-@routes.route("/", methods=["GET", "POST"])
-
-
-def hello_world():
-    # Recuperamos todas las claves relevantes del entorno
-    env_vars = {
-        "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY"),
-        "SUPABASE_URL": os.environ.get("SUPABASE_URL"),
-        "SUPABASE_API_KEY": os.environ.get("SUPABASE_API_KEY"),
-        "TWILIO_ACCOUNT_SID": os.environ.get("TWILIO_ACCOUNT_SID"),
-        "TWILIO_AUTH_TOKEN": os.environ.get("TWILIO_AUTH_TOKEN"),
-        "TWILIO_WHATSAPP_NUMBER": os.environ.get("TWILIO_WHATSAPP_NUMBER"),
-        "PINECONE_API_KEY": os.environ.get("PINECONE_API_KEY")
-    }
-
-    if request.method == "GET":
-        # Devolverlo como texto plano (opcionalmente podés formatearlo mejor)
-        return "\n".join([f"{k}: {v}" for k, v in env_vars.items()])
-
-    if request.method == "POST":
-        return jsonify({
-            "message": "POST recibido correctamente",
-            "env_vars": env_vars
-        })
-'''
-'''
-from flask import Flask, request, jsonify
-import os
-import openai
-
-app = Flask(__name__)
-
-@app.route("/", methods=["POST"])
-def ask_openai():
-    """
-    Endpoint que recibe un JSON con contexto y llama a OpenAI.
-    Espera: {"context": "Un chiste", "temperature": 0.7, "model": "gpt-4"}
-    """
-    try:
-        data = request.get_json()
-
-        context = data.get("context", "Hola")
-        temperature = data.get("temperature", 0)
-        model = data.get("model", "gpt-4")
-
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            return jsonify({"error": "API key no encontrada"}), 500
-
-        openai.api_key = api_key
-
-        messages = [{"role": "system", "content": context}]
-
-        completion = openai.ChatCompletion.create(
-            model=model,
-            messages=messages,
-            temperature=temperature
+            flask.flash("¡Gracias por tu feedback!", "success")
+        except Exception:
+            current_app.logger.exception("Error guardando feedback:")
+            flask.flash("No se pudo guardar tu feedback", "error")
+
+        current_app.logger.info(
+            f"Feedback registrado: tx={txid}, tel={tel}, rating={rating}, comment={comentario}"
+        )
+        return render_template("feedback_thanks.html")
+
+    # 3) Flujo GET
+    tel  = request.values.get("tel", "").strip()
+    txid = request.values.get("txid")
+
+    # 3.1 Solicitar teléfono si no hay
+    if not tel:
+        return render_template("index.html", step="phone")
+
+    # 3.2 Validar contacto
+    contacto = Contacts().get_by_phone(tel)
+    if not contacto:
+        flask.flash(f"El teléfono {tel} no está registrado.", "error")
+        return render_template("index.html", step="phone")
+
+    # 3.3 Listar sesiones si no hay txid
+    if not txid:
+        sesiones = Transactions().get_by_contact_id(contacto.contact_id)
+        sesiones.sort(key=lambda s: s.timestamp, reverse=True)
+
+        sesiones_formateadas = []
+        for s in sesiones:
+            raw_ts = s.timestamp
+            if isinstance(raw_ts, str):
+                try:
+                    dt = datetime.fromisoformat(raw_ts)
+                except ValueError:
+                    dt = datetime.strptime(raw_ts, "%Y-%m-%d %H:%M:%S")
+            else:
+                dt = raw_ts
+            dt_ajustada = dt - timedelta(hours=3)
+            sesiones_formateadas.append({
+                "id":        s.id,
+                "timestamp": dt_ajustada.strftime("%Y-%m-%d | %H:%M")
+            })
+
+        return render_template(
+            "index.html",
+            step="select",
+            telefono=tel,
+            sesiones=sesiones_formateadas
         )
 
-        content = completion.choices[0].message.content
-        return jsonify({"response": content})
+    # 3.4 Mostrar Q/A de la transacción
+    convo_str = Transactions().get_conversation_by_id(txid) or "[]"
+    try:
+        messages = json.loads(convo_str)
+    except json.JSONDecodeError:
+        current_app.logger.warning(f"JSON inválido: {convo_str!r}")
+        messages = []
 
-    except openai.error.OpenAIError as e:
-        return jsonify({"error": f"Error en la API de OpenAI: {str(e)}"}), 500
+    interacciones = [m for m in messages if m.get("role") in ("assistant", "user")]
+    return render_template(
+        "index.html",
+        step="qa",
+        interacciones=interacciones,
+        telefono=tel,
+        txid=txid
+    )
+
+# Endpoints GET y POST que llaman a la lógica unificada
+@routes.route("/consulta", methods=["GET"])
+def index():
+    try:
+        return _consulta()
+    except Exception:
+        # Re-lanzamos para que el error original quede en CloudWatch
+        raise
+
+@routes.route("/consulta", methods=["POST"])
+def feedback():
+    try:
+        return _consulta()
+    except Exception:
+        raise
+
+'''
+
+
+
+@routes.route("/consulta", methods=["GET"])
+def index():
+    tel  = flask.request.values.get("tel", "").strip()
+    txid = flask.request.values.get("txid")
+
+    if not tel:
+        return flask.render_template("index.html", step="phone")
+
+    contacto = Contacts().get_by_phone(tel)
+    if not contacto:
+        flask.flash(f"El teléfono {tel} no está registrado.", "error")
+        return flask.render_template("index.html", step="phone")
+
+    # paso 2: listado de sesiones/consultas
+    if not txid:
+        sesiones = Transactions().get_by_contact_id(contacto.contact_id)
+        # orden descendente por timestamp raw
+        sesiones.sort(key=lambda s: s.timestamp, reverse=True)
+
+        sesiones_formateadas = []
+        for s in sesiones:
+            raw_ts = s.timestamp
+            # 1) parsear si viene como string
+            if isinstance(raw_ts, str):
+                try:
+                    # si está en ISO (2025-05-02T14:30:00)
+                    dt = datetime.fromisoformat(raw_ts)
+                except ValueError:
+                    # si está en "YYYY-MM-DD HH:MM:SS"
+                    dt = datetime.strptime(raw_ts, "%Y-%m-%d %H:%M:%S")
+            else:
+                dt = raw_ts  # ya es datetime
+
+            # 2) restar 5 horas
+            dt_ajustada = dt - timedelta(hours=3)
+
+            # 3) formatear
+            sesiones_formateadas.append({
+                "id": s.id,
+                "timestamp": dt_ajustada.strftime("%Y-%m-%d | %H:%M")
+            })
+
+        return flask.render_template(
+            "index.html",
+            step="select",
+            telefono=tel,
+            sesiones=sesiones_formateadas
+        )
+
+    # paso 3: Q/A igual que antes…
+    convo_str = Transactions().get_conversation_by_id(txid) or "[]"
+    try:
+        messages = json.loads(convo_str)
+    except json.JSONDecodeError:
+        flask.current_app.logger.warning(f"JSON inválido: {convo_str!r}")
+        messages = []
+
+    interacciones = [m for m in messages if m.get("role") in ("assistant", "user")]
+    return flask.render_template(
+        "index.html",
+        step="qa",
+        interacciones=interacciones,
+        telefono=tel,
+        txid=txid
+    )
+
+@routes.route("/consulta/feedback", methods=["POST"])
+def feedback():
+    tel   = flask.request.form.get("tel", "").strip()
+    txid  = flask.request.form.get("txid")
+    
+    try:
+        rating     = int(flask.request.form.get("rating", 0))
+        comentario = flask.request.form.get("comment", "").strip()
+    except ValueError:
+        flask.flash("Puntuación inválida", "error")
+        return flask.redirect(flask.url_for("routes.index", tel=tel, txid=txid))
+
+    # guardá en BD incluyendo el txid
+    
+    tx = Transactions()
+    try:
+        # Asumimos que txid es el id de la transacción en la tabla
+        tx.update(
+            id=int(txid),
+            puntuacion=rating,
+            comentario=comentario
+        )
+        flask.flash("¡Gracias por tu feedback!", "success")
+    
     except Exception as e:
-        return jsonify({"error": f"Error inesperado: {str(e)}"}), 500
-'''
-'''
-from flask import Flask
-import os
+        flask.current_app.logger.error(f"Error guardando feedback: {e}")
+        flask.flash("No se pudo guardar tu feedback", "error")
 
-app = Flask(__name__)
-
-@app.route("/")
-def hello_world():
-    openai_key = os.environ.get("OPENAI_API_KEY")
-    return openai_key
-'''
-'''
-from flask import Blueprint, request, jsonify
-import os
-from dotenv import load_dotenv
-
-load_dotenv()  # Carga variables desde .env
-
-routes = Blueprint("routes", __name__)
-
-@routes.route("/", methods=["GET", "POST"])
-def hello_world():
-    openai_key = os.environ.get("OPENAI_API_KEY")
-
-    if request.method == "GET":
-        return f"OPENAI_API_KEY: {openai_key}"
-
-    if request.method == "POST":
-        return jsonify({
-            "message": "POST recibido correctamente",
-            "openai_key": openai_key
-        })  
+    # por ahora sólo logueamos:
+    flask.current_app.logger.info(
+        f"Feedback para tx {txid} de {tel}: rating={rating}, comment={comentario}"
+    )
+    return flask.render_template("feedback_thanks.html")
 '''
