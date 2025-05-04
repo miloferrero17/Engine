@@ -49,7 +49,7 @@ def handle_incoming_message(body, to, media_url):
     ### 1) Inicializo las variables
     event_id = 0
     msg_key = 0
-    tiempo_sesion = 5
+    tiempo_sesion = 0.5
     nodo_destino = 0
     ultimo_mensaje = ""
     response_text = ""
@@ -343,20 +343,6 @@ def handle_incoming_message(body, to, media_url):
             })
             conversation_str = json.dumps(conversation_history)
 
-            '''
-            open_tx_id = tx.get_open_transaction_id_by_contact_id(contacto.contact_id)
-            print(open_tx_id)
-            tx.update(
-                id=open_tx_id,
-                contact_id=contacto.contact_id,
-                phone=numero_limpio,
-                name="Abierta",
-                conversation=conversation_str,
-                timestamp=formatted_now,
-                event_id=event_id
-            )
-            print(tx)
-            '''
             nodo_destino = msg_key
             print(nodo_destino)
             while subsiguiente == 0:
@@ -431,4 +417,4 @@ def handle_incoming_message(body, to, media_url):
             print(f"❌ Error accediendo a 'name': {e}")
 
 if __name__ == "__main__":
-    handle_incoming_message("me duele la panza", "whatsapp:+5491133585362", "")
+    handle_incoming_message("me duele la vagina", "whatsapp:+5491133585362", "")
