@@ -2,7 +2,7 @@ import os
 import openai
 
 
-def ask_openai(messages, temperature=0, model="gpt-4"):
+def ask_openai(messages, temperature=0, model="gpt-4o-2024-08-06"):
     """
     Realiza una consulta a la API de OpenAI con los parámetros dados.
 

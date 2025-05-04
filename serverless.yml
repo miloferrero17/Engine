@@ -28,20 +28,29 @@ custom:
     dockerizePip: true
     slim: true
     invalidateCaches: true
+    staticRoutes:
+          /static: static  # mapea la ruta /static a la carpeta local static/
 
 functions:
   app:
     handler: wsgi_handler.handler
-    # este bloque mapea TODO tu Flask:
     events:
       - http:
+          path: consulta
+          method: get
+          integration: lambda-proxy
+      - http:
+          path: consulta
+          method: post
+          integration: lambda-proxy
+      - http:
           path: /
-          method: any
-          cors: true
+          method: ANY
+          integration: lambda-proxy
       - http:
           path: /{proxy+}
-          method: any
-          cors: true
+          method: ANY
+          integration: lambda-proxy
 
 # Permite que Serverless instale dependencias automáticamente
 package:
@@ -49,3 +58,5 @@ package:
     - venv/**
     - node_modules/**
     - .serverless/**
+  include:
+    - static/**
